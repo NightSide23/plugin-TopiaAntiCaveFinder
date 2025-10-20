@@ -35,6 +35,7 @@ public final class PluginConfig {
     private double interactionRevealRadius;
     private int interactionRevealDurationTicks;
     private double interiorRevealRadius;
+    private double maskActivationRadius;
     private int maskingMode;
     private Set<String> excludedWorlds = new HashSet<>();
     private Set<Material> maskableMaterials = EnumSet.noneOf(Material.class);
@@ -60,6 +61,7 @@ public final class PluginConfig {
         this.interactionRevealRadius = Math.max(0.0, config.getDouble("interaction-reveal-radius", 6.0));
         this.interactionRevealDurationTicks = Math.max(0, config.getInt("interaction-reveal-duration-ticks", 200));
         this.interiorRevealRadius = Math.max(0.0, config.getDouble("interior-reveal-radius", 8.0));
+        this.maskActivationRadius = Math.max(1.0, config.getDouble("mask-activation-radius", 16.0));
 
         this.maskingMode = Math.max(1, Math.min(2, config.getInt("masking-mode", 1)));
         this.excludedWorlds = loadExcludedWorlds(config.getStringList("excluded-worlds"));
@@ -256,6 +258,10 @@ public final class PluginConfig {
 
     public double getInteriorRevealRadius() {
         return interiorRevealRadius;
+    }
+
+    public double getMaskActivationRadius() {
+        return maskActivationRadius;
     }
 
     public int getInteractionRevealDurationTicks() {
