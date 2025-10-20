@@ -74,6 +74,9 @@ final class InteriorRevealProcessor {
                 continue;
             }
 
+            if (!world.isChunkLoaded(Math.floorDiv(x, 16), Math.floorDiv(z, 16))) {
+                continue;
+            }
             Block block = world.getBlockAt(x, y, z);
             if (!BlockMaterialUtil.isInteriorTraversable(block.getType())) {
                 continue;
@@ -91,11 +94,17 @@ final class InteriorRevealProcessor {
             revealBoundaryLayers(player, session, world, effectiveWorldName, block, activeKeys, tick);
 
             for (BlockFace face : NEIGHBOR_FACES) {
-                Block neighbor = block.getRelative(face);
+                int neighborX = block.getX() + face.getModX();
+                int neighborY = block.getY() + face.getModY();
+                int neighborZ = block.getZ() + face.getModZ();
+                if (!world.isChunkLoaded(Math.floorDiv(neighborX, 16), Math.floorDiv(neighborZ, 16))) {
+                    continue;
+                }
+                Block neighbor = world.getBlockAt(neighborX, neighborY, neighborZ);
                 if (!BlockMaterialUtil.isInteriorTraversable(neighbor.getType())) {
                     continue;
                 }
-                long neighborPacked = packBlockPosition(neighbor.getX(), neighbor.getY(), neighbor.getZ());
+                long neighborPacked = packBlockPosition(neighborX, neighborY, neighborZ);
                 if (visited.add(neighborPacked)) {
                     queue.addLast(neighborPacked);
                 }
@@ -112,14 +121,26 @@ final class InteriorRevealProcessor {
                                              Set<BlockKey> activeKeys,
                                              int tick) {
         for (BlockFace face : NEIGHBOR_FACES) {
-            Block boundary = origin.getRelative(face);
+            int boundaryX = origin.getX() + face.getModX();
+            int boundaryY = origin.getY() + face.getModY();
+            int boundaryZ = origin.getZ() + face.getModZ();
+            if (!world.isChunkLoaded(Math.floorDiv(boundaryX, 16), Math.floorDiv(boundaryZ, 16))) {
+                continue;
+            }
+            Block boundary = world.getBlockAt(boundaryX, boundaryY, boundaryZ);
             revealLayerBlock(player, session, boundary, worldName, activeKeys, tick);
 
             if (BlockMaterialUtil.isInteriorTraversable(boundary.getType())) {
                 continue;
             }
 
-            Block second = boundary.getRelative(face);
+            int secondX = boundaryX + face.getModX();
+            int secondY = boundaryY + face.getModY();
+            int secondZ = boundaryZ + face.getModZ();
+            if (!world.isChunkLoaded(Math.floorDiv(secondX, 16), Math.floorDiv(secondZ, 16))) {
+                continue;
+            }
+            Block second = world.getBlockAt(secondX, secondY, secondZ);
             revealLayerBlock(player, session, second, worldName, activeKeys, tick);
         }
     }
@@ -145,6 +166,9 @@ final class InteriorRevealProcessor {
     }
 
     private static void enqueueSeed(LongArrayQueue queue, LongHashSet visited, World world, int x, int y, int z) {
+        if (!world.isChunkLoaded(Math.floorDiv(x, 16), Math.floorDiv(z, 16))) {
+            return;
+        }
         Block block = world.getBlockAt(x, y, z);
         if (!BlockMaterialUtil.isInteriorTraversable(block.getType())) {
             return;

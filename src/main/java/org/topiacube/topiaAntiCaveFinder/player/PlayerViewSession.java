@@ -85,14 +85,20 @@ final class PlayerViewSession {
             blockStates.remove(key);
             return;
         }
-        Location location;
+        Location location = null;
         World world = player.getWorld();
         if (world != null && Objects.equals(world.getName(), key.getWorldName())) {
-            location = new Location(world, key.getX(), key.getY(), key.getZ());
-        } else {
-            location = key.toLocation();
+            if (world.isChunkLoaded(Math.floorDiv(key.getX(), 16), Math.floorDiv(key.getZ(), 16))) {
+                location = new Location(world, key.getX(), key.getY(), key.getZ());
+            }
+        } else if (key.getWorldName() != null) {
+            World keyWorld = Bukkit.getWorld(key.getWorldName());
+            if (keyWorld != null && keyWorld.isChunkLoaded(Math.floorDiv(key.getX(), 16), Math.floorDiv(key.getZ(), 16))) {
+                location = new Location(keyWorld, key.getX(), key.getY(), key.getZ());
+            }
         }
         if (location == null) {
+            blockStates.remove(key);
             return;
         }
         if (BLOCK_CHANGE_TRANSMITTER.send(player, location, maskData)) {
@@ -109,10 +115,15 @@ final class PlayerViewSession {
         World world = player.getWorld();
         Block block = null;
         if (world != null && Objects.equals(world.getName(), key.getWorldName())) {
-            block = world.getBlockAt(key.getX(), key.getY(), key.getZ());
+            if (world.isChunkLoaded(Math.floorDiv(key.getX(), 16), Math.floorDiv(key.getZ(), 16))) {
+                block = world.getBlockAt(key.getX(), key.getY(), key.getZ());
+            }
         }
-        if (block == null) {
-            block = key.toBlock();
+        if (block == null && key.getWorldName() != null) {
+            World keyWorld = Bukkit.getWorld(key.getWorldName());
+            if (keyWorld != null && keyWorld.isChunkLoaded(Math.floorDiv(key.getX(), 16), Math.floorDiv(key.getZ(), 16))) {
+                block = keyWorld.getBlockAt(key.getX(), key.getY(), key.getZ());
+            }
         }
         if (block == null) {
             blockStates.remove(key);
@@ -162,9 +173,14 @@ final class PlayerViewSession {
         World world = player.getWorld();
         Block block = null;
         if (world != null && Objects.equals(world.getName(), key.getWorldName())) {
-            block = world.getBlockAt(key.getX(), key.getY(), key.getZ());
-        } else {
-            block = key.toBlock();
+            if (world.isChunkLoaded(Math.floorDiv(key.getX(), 16), Math.floorDiv(key.getZ(), 16))) {
+                block = world.getBlockAt(key.getX(), key.getY(), key.getZ());
+            }
+        } else if (key.getWorldName() != null) {
+            World keyWorld = Bukkit.getWorld(key.getWorldName());
+            if (keyWorld != null && keyWorld.isChunkLoaded(Math.floorDiv(key.getX(), 16), Math.floorDiv(key.getZ(), 16))) {
+                block = keyWorld.getBlockAt(key.getX(), key.getY(), key.getZ());
+            }
         }
         if (block != null) {
             BLOCK_CHANGE_TRANSMITTER.send(player, block.getLocation(), block.getBlockData());

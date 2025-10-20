@@ -1,6 +1,7 @@
 package org.topiacube.topiaAntiCaveFinder.player;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -15,12 +16,15 @@ import org.jetbrains.annotations.NotNull;
 import org.topiacube.topiaAntiCaveFinder.config.PluginConfig;
 import org.topiacube.topiaAntiCaveFinder.mask.BlockKey;
 import org.topiacube.topiaAntiCaveFinder.mask.CaveMaskManager;
+import org.topiacube.topiaAntiCaveFinder.mask.ChunkKey;
 import org.topiacube.topiaAntiCaveFinder.mask.TrackedBlock;
 import org.topiacube.topiaAntiCaveFinder.mask.MaskPaletteResolver;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -95,6 +99,7 @@ public final class PlayerViewService {
     private final ArrayBlockingQueue<ViewComputationResult> completedResults =
         new ArrayBlockingQueue<>(COMPLETED_RESULT_QUEUE_CAPACITY);
     private final Map<BlockKey, Integer> interactionRevealExpiry = new HashMap<>();
+    private final Map<ChunkKey, Set<UUID>> pendingChunkUpdates = new HashMap<>();
     private final boolean entityMaskingEnabled;
     private BukkitTask task;
     private ExecutorService computationPool;
@@ -141,6 +146,9 @@ public final class PlayerViewService {
             if (targetY < minY || targetY > maxY) {
                 continue;
             }
+            if (!world.isChunkLoaded(Math.floorDiv(targetX, 16), Math.floorDiv(targetZ, 16))) {
+                continue;
+            }
             Block block = world.getBlockAt(targetX, targetY, targetZ);
             revealBlock(player,
                 session,
@@ -165,6 +173,9 @@ public final class PlayerViewService {
             int targetY = targetYBase + offset[1];
             int targetZ = targetZBase + offset[2];
             if (targetY < minY || targetY > maxY) {
+                continue;
+            }
+            if (!world.isChunkLoaded(Math.floorDiv(targetX, 16), Math.floorDiv(targetZ, 16))) {
                 continue;
             }
             Block block = world.getBlockAt(targetX, targetY, targetZ);
@@ -274,6 +285,7 @@ public final class PlayerViewService {
             }
         }
         interactionRevealExpiry.clear();
+        pendingChunkUpdates.clear();
         completedResults.clear();
         if (computationPool != null) {
             computationPool.shutdownNow();
@@ -290,6 +302,7 @@ public final class PlayerViewService {
         if (session != null) {
             session.clear(plugin, player);
         }
+        clearPendingChunks(player.getUniqueId());
     }
 
     public void resetPlayer(Player player) {
@@ -297,6 +310,7 @@ public final class PlayerViewService {
         if (session != null) {
             session.clear(plugin, player);
         }
+        clearPendingChunks(player.getUniqueId());
     }
 
     public void registerExcavatedBlock(Player source, Block block) {
@@ -569,6 +583,14 @@ public final class PlayerViewService {
                     continue;
                 }
 
+                int chunkX = Math.floorDiv(key.getX(), 16);
+                int chunkZ = Math.floorDiv(key.getZ(), 16);
+                if (!world.isChunkLoaded(chunkX, chunkZ)) {
+                    registerPendingChunk(snapshot.playerId(), worldName, chunkX, chunkZ);
+                    continue;
+                }
+                unregisterPendingChunk(snapshot.playerId(), worldName, chunkX, chunkZ);
+
                 double distanceSquared = distanceSquares[i];
                 boolean priority = distanceSquared <= priorityDistanceSquared;
                 if (processed >= maxBlocks && !(priority && extraAllowance > 0)) {
@@ -730,6 +752,9 @@ public final class PlayerViewService {
                 if (targetY < minY || targetY > maxY) {
                     break;
                 }
+                if (!world.isChunkLoaded(Math.floorDiv(targetX, 16), Math.floorDiv(targetZ, 16))) {
+                    break;
+                }
                 Block targetBlock = world.getBlockAt(targetX, targetY, targetZ);
                 boolean traversable = BlockMaterialUtil.isInteriorTraversable(targetBlock.getType());
                 if (!traversable && blocked) {
@@ -887,6 +912,88 @@ public final class PlayerViewService {
         }
         interactionRevealExpiry.remove(key);
         return false;
+    }
+
+    private void registerPendingChunk(UUID playerId, String worldName, int chunkX, int chunkZ) {
+        if (playerId == null || worldName == null) {
+            return;
+        }
+        if (config.isWorldExcluded(worldName)) {
+            return;
+        }
+        String canonicalWorld = BlockKey.canonicalWorldName(worldName);
+        ChunkKey chunkKey = new ChunkKey(canonicalWorld, chunkX, chunkZ);
+        pendingChunkUpdates.computeIfAbsent(chunkKey, unused -> new HashSet<>()).add(playerId);
+    }
+
+    private void unregisterPendingChunk(UUID playerId, String worldName, int chunkX, int chunkZ) {
+        if (playerId == null || worldName == null) {
+            return;
+        }
+        String canonicalWorld = BlockKey.canonicalWorldName(worldName);
+        ChunkKey chunkKey = new ChunkKey(canonicalWorld, chunkX, chunkZ);
+        Set<UUID> waiters = pendingChunkUpdates.get(chunkKey);
+        if (waiters == null) {
+            return;
+        }
+        waiters.remove(playerId);
+        if (waiters.isEmpty()) {
+            pendingChunkUpdates.remove(chunkKey);
+        }
+    }
+
+    private Set<UUID> drainPendingChunkWaiters(String worldName, int chunkX, int chunkZ) {
+        String canonicalWorld = BlockKey.canonicalWorldName(worldName);
+        ChunkKey chunkKey = new ChunkKey(canonicalWorld, chunkX, chunkZ);
+        Set<UUID> waiters = pendingChunkUpdates.remove(chunkKey);
+        if (waiters == null || waiters.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return new HashSet<>(waiters);
+    }
+
+    private void clearPendingChunks(UUID playerId) {
+        if (pendingChunkUpdates.isEmpty() || playerId == null) {
+            return;
+        }
+        Iterator<Map.Entry<ChunkKey, Set<UUID>>> iterator = pendingChunkUpdates.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<ChunkKey, Set<UUID>> entry = iterator.next();
+            Set<UUID> waiters = entry.getValue();
+            waiters.remove(playerId);
+            if (waiters.isEmpty()) {
+                iterator.remove();
+            }
+        }
+    }
+
+    public void handleChunkLoad(Chunk chunk) {
+        if (chunk == null) {
+            return;
+        }
+        String worldName = chunk.getWorld().getName();
+        if (config.isWorldExcluded(worldName)) {
+            return;
+        }
+        Set<UUID> waiters = drainPendingChunkWaiters(worldName, chunk.getX(), chunk.getZ());
+        if (waiters.isEmpty()) {
+            return;
+        }
+        for (UUID playerId : waiters) {
+            PlayerViewSession session = sessions.get(playerId);
+            if (session == null) {
+                continue;
+            }
+            Player player = Bukkit.getPlayer(playerId);
+            if (player == null || !player.isOnline()) {
+                continue;
+            }
+            if (!Objects.equals(player.getWorld().getName(), worldName)) {
+                continue;
+            }
+            session.markDirty();
+            scheduleComputation(player, session);
+        }
     }
 
     private void markRevealed(Player player, BlockKey key) {
