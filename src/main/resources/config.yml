@@ -1,0 +1,83 @@
+# Период проверки видимости пещер (в тиках сервера).
+check-interval-ticks: 2
+# Максимальная дистанция, на которой игрок может видеть реальные блоки (в блоках).
+max-reveal-distance: 32.0
+# Минимальная дистанция, при которой блок всегда будет показан настоящим.
+min-reveal-distance: 3.0
+# Угол обзора (в градусах), попадая в который и имея прямую видимость, блок покажется настоящим.
+reveal-fov-angle-degrees: 360.0
+# Радиус по чанкам, в которых мы проверяем изменённые блоки вокруг игрока.
+chunk-radius: 5
+# Лимит блоков, обновляемых для одного игрока за один проход алгоритма.
+max-blocks-per-player: 8148
+# Радиус (в блоках), в котором все игроки рядом с раскопками временно сохраняют правдивый вид.
+interaction-reveal-radius: 7.0
+# Длительность (в тиках), на которую сохраняется раскрытие после раскопки.
+interaction-reveal-duration-ticks: 200
+# Радиус (в блоках), в пределах которого пространство вокруг игрока раскрывается внутри замаскированных пещер.
+interior-reveal-radius: 9.0
+# Режим маскировки: 1 - динамическая маскировка (по соседям), 2 - статические подстановки (custom-mask-mappings).
+masking-mode: 2
+# Миры, в которых система маскировки полностью отключена.
+excluded-worlds:
+  - spawn
+  - tournaments
+  - duel
+  - ivents
+# Настройки статической маскировки (активны только при masking-mode = 2).
+# Каждому миру соответствует набор блоков с весами (приоритетом), в которые преобразуются скрытые блоки.
+custom-mask-mappings:
+  default:
+    CAVE_AIR: 5
+    COBBLESTONE: 1
+    MOSSY_COBBLESTONE: 1
+    OBSIDIAN: 1
+    STONE: 15
+    DEEPSLATE: 15
+    DIAMOND_ORE: 10
+    EMERALD_ORE: 5
+    GOLD_ORE: 5
+    IRON_ORE: 5
+    COAL_ORE: 5
+    LAPIS_ORE: 5
+    REDSTONE_ORE: 5
+    COPPER_ORE: 5
+    DEEPSLATE_DIAMOND_ORE: 5
+    DEEPSLATE_EMERALD_ORE: 3
+    DEEPSLATE_GOLD_ORE: 3
+    DEEPSLATE_IRON_ORE: 3
+    DEEPSLATE_COAL_ORE: 3
+    DEEPSLATE_LAPIS_ORE: 3
+    DEEPSLATE_REDSTONE_ORE: 3
+    DEEPSLATE_COPPER_ORE: 3
+  world_nether:
+    NETHERRACK: 4
+    NETHER_QUARTZ_ORE: 1
+    NETHER_GOLD_ORE: 1
+    ANCIENT_DEBRIS: 1
+# Список материалов, которые плагин будет маскировать как естественные породы.
+maskable-materials:
+  - STONE
+  - DEEPSLATE
+  - GRANITE
+  - DIORITE
+  - ANDESITE
+  - TUFF
+  - CALCITE
+  - BASALT
+  - SMOOTH_BASALT
+  - BLACKSTONE
+  - NETHERRACK
+  - SOUL_SAND
+  - SOUL_SOIL
+  - END_STONE
+  - DIRT
+  - GRASS_BLOCK
+# Список сущностей, которые скрываются без прямой видимости.
+maskable-entities:
+  - ARMOR_STAND
+  - ITEM_FRAME
+  - GLOW_ITEM_FRAME
+  - PAINTING
+  - CHEST_MINECART
+  - HOPPER_MINECART

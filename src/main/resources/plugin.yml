@@ -1,0 +1,4 @@
+name: TopiaAntiCaveFinder
+version: '1.0'
+main: org.topiacube.topiaAntiCaveFinder.TopiaAntiCaveFinder
+api-version: '1.16'
