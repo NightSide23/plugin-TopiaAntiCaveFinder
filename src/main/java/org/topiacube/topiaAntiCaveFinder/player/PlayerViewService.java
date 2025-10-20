@@ -24,10 +24,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -40,6 +39,8 @@ public final class PlayerViewService {
     private static final double EPSILON = 1.0E-6;
     private static final int MAX_ASYNC_THREADS = 4;
     private static final int STALE_RESULT_TOLERANCE_TICKS = 40;
+    private static final int COMPLETED_RESULT_QUEUE_CAPACITY = 128;
+    private static final int MAX_RESULTS_PER_TICK = 16;
     private static final int ADDITIONAL_REVEAL_LAYERS = 2;
     private static final int[][] REVEAL_DIRECTIONS = {
         {1, 0, 0},
@@ -91,7 +92,8 @@ public final class PlayerViewService {
     private final PluginConfig config;
 
     private final Map<UUID, PlayerViewSession> sessions = new HashMap<>();
-    private final Queue<ViewComputationResult> completedResults = new ConcurrentLinkedQueue<>();
+    private final ArrayBlockingQueue<ViewComputationResult> completedResults =
+        new ArrayBlockingQueue<>(COMPLETED_RESULT_QUEUE_CAPACITY);
     private final Map<BlockKey, Integer> interactionRevealExpiry = new HashMap<>();
     private final boolean entityMaskingEnabled;
     private BukkitTask task;
@@ -377,15 +379,28 @@ public final class PlayerViewService {
 
     private void drainCompletedResults() {
         ViewComputationResult result;
-        while ((result = completedResults.poll()) != null) {
+        int processed = 0;
+        while (processed < MAX_RESULTS_PER_TICK && (result = completedResults.poll()) != null) {
+            processed++;
             PlayerViewSession session = result.session();
             session.markComputationFinished();
-            Player player = Bukkit.getPlayer(result.snapshot().playerId());
+            int age = currentTick - result.snapshot().scheduledTick();
+            if (age > STALE_RESULT_TOLERANCE_TICKS) {
+                session.recycleComputationBuffers();
+                session.markDirty();
+                plugin.getLogger().log(Level.FINE,
+                    "Discarded stale computation result for player " + result.snapshot().playerName()
+                        + " (age=" + age + " ticks)");
+                continue;
+            }
+
             PlayerViewSession currentSession = sessions.get(result.snapshot().playerId());
             if (currentSession != session) {
                 session.recycleComputationBuffers();
                 continue;
             }
+
+            Player player = Bukkit.getPlayer(result.snapshot().playerId());
             if (player == null || !player.isOnline()) {
                 session.recycleComputationBuffers();
                 continue;
@@ -398,10 +413,7 @@ public final class PlayerViewService {
                 session.recycleComputationBuffers();
                 continue;
             }
-            if ((currentTick - result.snapshot().scheduledTick()) > STALE_RESULT_TOLERANCE_TICKS) {
-                session.recycleComputationBuffers();
-                continue;
-            }
+
             applyViewResult(player, session, result, currentTick);
             session.recycleComputationBuffers();
         }
@@ -425,16 +437,88 @@ public final class PlayerViewService {
                     for (int i = 0; i < buffer.size(); i++) {
                         distances[i] = snapshot.distanceSquared(buffer.get(i).getKey());
                     }
-                    completedResults.add(new ViewComputationResult(session, snapshot, buffer, distances, buffer.size()));
+                    ViewComputationResult result = new ViewComputationResult(session, snapshot, buffer, distances, buffer.size());
+                    if (!enqueueCompletedResult(result)) {
+                        handleComputationRejection(session, snapshot, "Completed results queue is full", null);
+                        return;
+                    }
                 } catch (Throwable throwable) {
                     plugin.getLogger().log(Level.SEVERE, "Failed to compute view update for player " + snapshot.playerName(), throwable);
                     session.recycleComputationBuffers();
                     session.markComputationFinished();
+                    session.markDirty();
                 }
             });
         } catch (RejectedExecutionException rejected) {
-            session.recycleComputationBuffers();
+            handleComputationRejection(session, snapshot, "Failed to submit view computation task", rejected);
+        }
+    }
+
+    private boolean enqueueCompletedResult(ViewComputationResult result) {
+        if (completedResults.offer(result)) {
+            return true;
+        }
+
+        ViewComputationResult replaced = null;
+        for (ViewComputationResult queued : completedResults) {
+            if (queued.session() == result.session()) {
+                replaced = queued;
+                break;
+            }
+        }
+
+        if (replaced != null && completedResults.remove(replaced)) {
+            discardQueuedResult(replaced,
+                false,
+                Level.FINE,
+                "Replaced queued computation result with newer data");
+            if (completedResults.offer(result)) {
+                return true;
+            }
+        }
+
+        ViewComputationResult evicted = completedResults.poll();
+        if (evicted != null) {
+            discardQueuedResult(evicted,
+                true,
+                Level.WARNING,
+                "Evicted queued computation result due to capacity limit");
+        }
+
+        if (completedResults.offer(result)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private void discardQueuedResult(ViewComputationResult result,
+                                     boolean markSessionFinished,
+                                     Level level,
+                                     String message) {
+        PlayerViewSession session = result.session();
+        if (markSessionFinished) {
             session.markComputationFinished();
+            session.markDirty();
+        }
+        session.recycleComputationBuffers();
+        if (message != null) {
+            plugin.getLogger().log(level,
+                message + " (player=" + result.snapshot().playerName() + ")");
+        }
+    }
+
+    private void handleComputationRejection(PlayerViewSession session,
+                                            PlayerSnapshot snapshot,
+                                            String message,
+                                            Throwable cause) {
+        session.recycleComputationBuffers();
+        session.markComputationFinished();
+        session.markDirty();
+        if (cause == null) {
+            plugin.getLogger().log(Level.WARNING, message + " for player " + snapshot.playerName());
+        } else {
+            plugin.getLogger().log(Level.WARNING, message + " for player " + snapshot.playerName(), cause);
         }
     }
 
