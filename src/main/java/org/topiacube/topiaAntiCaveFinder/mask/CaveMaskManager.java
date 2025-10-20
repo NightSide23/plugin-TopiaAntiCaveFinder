@@ -371,6 +371,18 @@ public final class CaveMaskManager {
         }
     }
 
+    public boolean hasTrackedBlocks(String worldName, int chunkX, int chunkZ) {
+        lock.readLock().lock();
+        try {
+            String canonicalWorld = BlockKey.canonicalWorldName(worldName);
+            ChunkKey chunkKey = new ChunkKey(canonicalWorld, chunkX, chunkZ);
+            ChunkBlockStore store = chunkStores.get(chunkKey);
+            return store != null && !store.isEmpty();
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
     public TrackedBlock get(BlockKey key) {
         lock.readLock().lock();
         try {

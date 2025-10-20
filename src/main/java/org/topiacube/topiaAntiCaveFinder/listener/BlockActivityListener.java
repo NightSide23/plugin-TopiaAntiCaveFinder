@@ -11,6 +11,7 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.topiacube.topiaAntiCaveFinder.config.PluginConfig;
 import org.topiacube.topiaAntiCaveFinder.mask.CaveMaskManager;
@@ -100,6 +101,22 @@ public final class BlockActivityListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
         trackBlocks(event.blockList());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onChunkLoad(ChunkLoadEvent event) {
+        if (viewService == null) {
+            return;
+        }
+        org.bukkit.Chunk chunk = event.getChunk();
+        String worldName = chunk.getWorld().getName();
+        if (config.isWorldExcluded(worldName)) {
+            return;
+        }
+        if (!maskManager.hasTrackedBlocks(worldName, chunk.getX(), chunk.getZ())) {
+            return;
+        }
+        viewService.handleChunkLoad(chunk);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

@@ -49,6 +49,9 @@ final class MaskPropagator {
             int neighborX = baseX + face.getModX();
             int neighborY = baseY + face.getModY();
             int neighborZ = baseZ + face.getModZ();
+            if (!world.isChunkLoaded(Math.floorDiv(neighborX, 16), Math.floorDiv(neighborZ, 16))) {
+                continue;
+            }
             Block neighbor = world.getBlockAt(neighborX, neighborY, neighborZ);
             if (!BlockMaterialUtil.isAirLike(neighbor.getType())) {
                 continue;
